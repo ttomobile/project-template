@@ -1,0 +1,5 @@
+# Python virtual environments
+apps/fastapi-app/.venv/
+
+# Python cache
+__pycache__/
