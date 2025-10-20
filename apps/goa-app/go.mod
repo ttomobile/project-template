@@ -1,6 +1,6 @@
 module github.com/example/project-template/apps/goa-app
 
-go 1.24.3
+go 1.22
 
 require goa.design/goa/v3 v3.22.6
 

@@ -7,7 +7,7 @@
 - コマンド: `go version`
 - 出力:
   ```text
-  go version go1.24.3 linux/amd64
+    go version go1.22 linux/amd64
   ```
 - コマンドからの質問: なし
 - 応答: なし
