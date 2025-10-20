@@ -36,26 +36,49 @@
 
 ## Goa CLI のインストール
 
-- コマンド: `go install goa.design/goa/v3/cmd/goa@latest`
-- 出力: 依存モジュールのダウンロードログ（例）
+- コマンド: `GOBIN=$(pwd)/bin go install goa.design/goa/v3/cmd/goa@v3.22.6`
+- 出力（依存モジュール取得ログ、実行時の抜粋）:
   ```text
   go: downloading goa.design/goa/v3 v3.22.6
   go: downloading goa.design/goa v2.2.5+incompatible
   go: downloading golang.org/x/tools v0.38.0
-  ...
+  go: downloading github.com/stretchr/testify v1.11.1
+  go: downloading github.com/google/uuid v1.6.0
+  go: downloading github.com/dimfeld/httppath v0.0.0-20170720192232-ee938bf73598
+  go: downloading github.com/manveru/faker v0.0.0-20171103152722-9fbc68a78c4d
+  go: downloading golang.org/x/text v0.30.0
+  go: downloading golang.org/x/sync v0.17.0
+  go: downloading github.com/davecgh/go-spew v1.1.1
+  go: downloading github.com/pmezard/go-difflib v1.0.0
+  go: downloading golang.org/x/mod v0.29.0
+  go: downloading gopkg.in/yaml.v3 v3.0.1
   ```
 - コマンドからの質問: なし
 - 応答: なし
+- メモ: 上記コマンドでリポジトリ直下の `bin/goa` に CLI が配置されることを確認しました。
 
 ## デザインの作成とコード生成
 
-- コマンド: `goa gen github.com/example/project-template/apps/goa-app/design`
-- 出力: 生成されたファイル一覧
+- コマンド: `../../bin/goa gen github.com/example/project-template/apps/goa-app/design`
+- 出力（生成されたファイル一覧）
   ```text
   gen/http/cli/goa_app/cli.go
   gen/http/openapi.json
   gen/http/openapi.yaml
-  ...
+  gen/http/openapi3.json
+  gen/http/openapi3.yaml
+  gen/http/status/client/cli.go
+  gen/http/status/client/client.go
+  gen/http/status/client/encode_decode.go
+  gen/http/status/client/paths.go
+  gen/http/status/client/types.go
+  gen/http/status/server/encode_decode.go
+  gen/http/status/server/paths.go
+  gen/http/status/server/server.go
+  gen/http/status/server/types.go
+  gen/status/client.go
+  gen/status/endpoints.go
+  gen/status/service.go
   ```
 - コマンドからの質問: なし
 - 応答: なし
