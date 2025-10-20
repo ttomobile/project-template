@@ -3,16 +3,24 @@ root = true
 [*]
 charset = utf-8
 end_of_line = lf
-indent_size = 4
-indent_style = space
 insert_final_newline = true
 trim_trailing_whitespace = true
+
+[*.{php,blade.php}]
+indent_style = space
+indent_size = 4
+
+[*.{js,ts,jsx,tsx,json,css,scss,vue}]
+indent_style = space
+indent_size = 2
 
 [*.md]
 trim_trailing_whitespace = false
 
 [*.{yml,yaml}]
+indent_style = space
 indent_size = 2
 
-[compose.yaml]
+[Makefile]
+indent_style = tab
 indent_size = 4
