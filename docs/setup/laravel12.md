@@ -10,6 +10,7 @@
    mkdir -p apps
    ```
 
+   - 標準出力: なし（既存ディレクトリがないためエラーは発生せず終了コード 0）
    - 質問事項: なし
    - 応答: 該当なし
 
@@ -19,13 +20,29 @@
    composer create-project laravel/laravel apps/laravel-app "12.*"
    ```
 
+   - 実行ログ抜粋:
+
+     ```text
+     Creating a "laravel/laravel" project at "./apps/laravel-app"
+     Installing laravel/laravel (v12.7.1)
+       - Downloading laravel/laravel (v12.7.1)
+       - Installing laravel/laravel (v12.7.1): Extracting archive
+     Created project in /workspace/project-template/apps/laravel-app
+     > @php -r "file_exists('.env') || copy('.env.example', '.env');"
+     Loading composer repositories with package information
+     Updating dependencies
+     Lock file operations: 112 installs, 0 updates, 0 removals
+     Installing dependencies from lock file (including require-dev)
+     Package operations: 112 installs, 0 updates, 0 removals
+     ...（依存パッケージのダウンロードとインストールログが続く）
+     ```
+
    - 質問事項: なし（コマンド実行中に対話的な入力は求められませんでした）
    - 応答: 該当なし
 
    コマンド実行後、自動的に以下が行われました。
    - `.env` の雛形コピーとアプリケーションキーの生成
    - 依存パッケージのインストールと自動ロードファイルの生成
-   - データベース用 SQLite ファイルの作成と初期マイグレーションの実行
 
 ## プロジェクト構成
 
