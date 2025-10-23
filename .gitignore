@@ -1,0 +1,10 @@
+# Python virtual environments
+apps/fastapi-app/.venv/
+
+# Python cache
+**/__pycache__/
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
