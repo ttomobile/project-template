@@ -1,16 +1,30 @@
-.PHONY: setup lint test run audit
+APP_DIR := apps/laravel-app
+
+.PHONY: setup lint lint-backend lint-frontend test test-backend test-frontend run audit
 
 setup:
-	@echo "依存関係のセットアップ（実装予定）"
+	cd $(APP_DIR) && composer install --no-interaction --prefer-dist
+	cd $(APP_DIR) && npm install
+	cd $(APP_DIR) && composer run setup
 
-lint:
-	@echo "Lint実行（実装予定）"
+lint: lint-backend lint-frontend
 
-test:
-	@echo "テスト実行（実装予定）"
+lint-backend:
+	cd $(APP_DIR) && composer run lint
+
+lint-frontend:
+	cd $(APP_DIR) && npm run lint
+
+test: test-backend test-frontend
+
+test-backend:
+	cd $(APP_DIR) && composer run test
+
+test-frontend:
+	cd $(APP_DIR) && npm run test
 
 run:
-	@echo "アプリ起動（実装予定）"
+	cd $(APP_DIR) && composer run dev
 
 audit:
-	@echo "セキュリティスキャン（実装予定）"
+	cd $(APP_DIR) && composer run audit
