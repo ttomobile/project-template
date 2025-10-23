@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -27,7 +26,7 @@ class OidcProviderTest extends TestCase
     {
         $user = User::factory()->create([
             'email' => 'demo@example.com',
-            'password' => Hash::make('password'),
+            'password' => 'password',
         ]);
 
         $client = config('oidc.clients.fastapi');
@@ -55,7 +54,11 @@ class OidcProviderTest extends TestCase
         $location = $loginResponse->headers->get('Location');
         $this->assertNotNull($location);
 
-        parse_str(parse_url($location, PHP_URL_QUERY) ?? '', $query);
+        $parsedUrl = parse_url($location);
+        $this->assertIsArray($parsedUrl, 'Redirect location must be a valid URL');
+        $this->assertArrayHasKey('query', $parsedUrl, 'Redirect must include query parameters');
+
+        parse_str($parsedUrl['query'], $query);
         $this->assertArrayHasKey('code', $query);
         $this->assertSame('test-state', $query['state']);
 

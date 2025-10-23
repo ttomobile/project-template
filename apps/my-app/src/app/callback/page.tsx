@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const fastapiBase =
@@ -17,16 +17,16 @@ type Status = {
 
 export default function CallbackPage(): JSX.Element {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [status, setStatus] = useState<Status>({
     message: "Processing login…",
   });
 
   useEffect(() => {
     async function complete(): Promise<void> {
-      const params = new URLSearchParams(window.location.search);
-      const source = (params.get("source") as Source | null) ?? "fastapi";
-      const code = params.get("code");
-      const state = params.get("state");
+      const source = (searchParams.get("source") as Source | null) ?? "fastapi";
+      const code = searchParams.get("code");
+      const state = searchParams.get("state");
 
       if (!code || !state) {
         setStatus({
@@ -42,6 +42,7 @@ export default function CallbackPage(): JSX.Element {
         const response = await fetch(`${baseUrl}/auth/callback`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ code, state }),
         });
         if (!response.ok) {
@@ -66,7 +67,7 @@ export default function CallbackPage(): JSX.Element {
     }
 
     void complete();
-  }, [router]);
+  }, [router, searchParams]);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100">

@@ -13,7 +13,8 @@ use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
 use Illuminate\View\View;
 
 class OidcController extends Controller
@@ -111,6 +112,8 @@ class OidcController extends Controller
 
         return view('oidc.login', [
             'client' => $client,
+            'clientId' => $client['id'] ?? $validated['client_id'],
+            'pendingRequest' => $validated,
             'requestedScopes' => explode(' ', $validated['scope']),
         ]);
     }
@@ -126,7 +129,14 @@ class OidcController extends Controller
         ]);
 
         $user = User::where('email', $credentials['email'])->first();
-        abort_if($user === null || ! Hash::check($credentials['password'], $user->password), 422, 'Invalid credentials');
+        $hashedPassword = $user?->password ?? '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi';
+        $validPassword = Hash::check($credentials['password'], $hashedPassword);
+
+        if ($user === null || ! $validPassword) {
+            throw ValidationException::withMessages([
+                'email' => __('auth.failed'),
+            ]);
+        }
 
         Auth::login($user);
         $request->session()->forget(self::AUTH_SESSION_KEY);
@@ -145,17 +155,19 @@ class OidcController extends Controller
             'client_secret' => ['nullable', 'string'],
         ]);
 
-        $code = $this->cache->pull(self::CACHE_CODE_PREFIX . $request->string('code'));
+        $code = $this->cache->pull(self::CACHE_CODE_PREFIX . (string) $request->input('code'));
         if ($code === null) {
             return response(['error' => 'invalid_grant'], 400);
         }
 
-        $client = $this->findClient($request->string('client_id')->toString());
+        $clientId = (string) $request->input('client_id');
+        $client = $this->findClient($clientId);
         if ($client === null) {
             return response(['error' => 'invalid_client'], 400);
         }
 
-        if ($client['redirect_uri'] !== $request->string('redirect_uri')->toString()) {
+        $redirectUri = (string) $request->input('redirect_uri');
+        if ($client['redirect_uri'] !== $redirectUri) {
             return response(['error' => 'invalid_grant'], 400);
         }
 
@@ -163,7 +175,8 @@ class OidcController extends Controller
             return response(['error' => 'invalid_grant'], 400);
         }
 
-        if (! $this->verifyCodeChallenge($code, (string) $request->string('code_verifier'))) {
+        $codeVerifier = (string) $request->input('code_verifier');
+        if (! $this->verifyCodeChallenge($code, $codeVerifier)) {
             return response(['error' => 'invalid_grant'], 400);
         }
 
@@ -204,7 +217,7 @@ class OidcController extends Controller
 
     private function issueCodeAndRedirect(User $user, array $pending): RedirectResponse
     {
-        $code = Str::random(64);
+        $code = bin2hex(random_bytes(32));
         $expiresAt = CarbonImmutable::now()->addMinutes(10);
 
         $this->cache->put(self::CACHE_CODE_PREFIX . $code, [
@@ -216,18 +229,15 @@ class OidcController extends Controller
             'scopes' => explode(' ', $pending['scope']),
         ], $expiresAt);
 
-        $redirect = $pending['redirect_uri'];
-        $query = http_build_query([
+        return redirect()->away($this->buildRedirectUri($pending['redirect_uri'], [
             'code' => $code,
             'state' => $pending['state'],
-        ]);
-
-        return redirect()->away($redirect . (str_contains($redirect, '?') ? '&' : '?') . $query);
+        ]));
     }
 
     private function issueTokens(User $user, string $audience, array $scopes): array
     {
-        $accessToken = Str::random(80);
+        $accessToken = bin2hex(random_bytes(40));
         $expiresIn = 3600;
         $now = CarbonImmutable::now();
         $idToken = $this->buildIdToken($user, $audience, $now, $expiresIn, $scopes);
@@ -244,6 +254,42 @@ class OidcController extends Controller
             'id_token' => $idToken,
             'scope' => implode(' ', $scopes),
         ];
+    }
+
+    private function buildRedirectUri(string $redirect, array $parameters): string
+    {
+        $parts = parse_url($redirect);
+        if ($parts === false || ! isset($parts['scheme'], $parts['host'])) {
+            throw new InvalidArgumentException('Invalid redirect URI.');
+        }
+
+        $existingQuery = [];
+        if (isset($parts['query'])) {
+            parse_str($parts['query'], $existingQuery);
+        }
+
+        $query = http_build_query(array_merge($existingQuery, $parameters), '', '&', PHP_QUERY_RFC3986);
+
+        $authority = $parts['host'];
+        if (isset($parts['user'])) {
+            $authority = $parts['user'] . (isset($parts['pass']) ? ':' . $parts['pass'] : '') . '@' . $authority;
+        }
+        if (isset($parts['port'])) {
+            $authority .= ':' . $parts['port'];
+        }
+
+        $path = $parts['path'] ?? '';
+
+        $rebuilt = $parts['scheme'] . '://' . $authority . $path;
+        if ($query !== '') {
+            $rebuilt .= '?' . $query;
+        }
+
+        if (isset($parts['fragment'])) {
+            $rebuilt .= '#' . $parts['fragment'];
+        }
+
+        return $rebuilt;
     }
 
     private function buildIdToken(User $user, string $audience, CarbonImmutable $issuedAt, int $expiresIn, array $scopes): string

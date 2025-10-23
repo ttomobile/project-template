@@ -7,11 +7,13 @@ clear their local session state.
 
 ## Getting Started
 
-1. Create a `.env.local` file if you use non-default API ports:
+1. Copy `.env.local.example` to `.env.local` if you use non-default API ports
+   or want to customise endpoints. Avoid trailing slashes in the base URLs to
+   prevent double slashes in requests:
 
    ```bash
-   NEXT_PUBLIC_FASTAPI_BASE_URL=http://localhost:8001
-   NEXT_PUBLIC_GOA_BASE_URL=http://localhost:8080
+   cp .env.local.example .env.local
+   # edit .env.local if required
    ```
 
 2. Install dependencies and start the development server:

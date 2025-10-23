@@ -30,9 +30,14 @@ type ProviderState = {
   description: string;
 };
 
-const fastapiBase =
-  process.env.NEXT_PUBLIC_FASTAPI_BASE_URL ?? "http://localhost:8001";
-const goaBase = process.env.NEXT_PUBLIC_GOA_BASE_URL ?? "http://localhost:8080";
+const sanitizeBaseUrl = (value: string): string => value.replace(/\/+$/, "");
+
+const fastapiBase = sanitizeBaseUrl(
+  process.env.NEXT_PUBLIC_FASTAPI_BASE_URL ?? "http://localhost:8001",
+);
+const goaBase = sanitizeBaseUrl(
+  process.env.NEXT_PUBLIC_GOA_BASE_URL ?? "http://localhost:8080",
+);
 
 export default function Home(): JSX.Element {
   const fastapi = useOidcProvider("fastapi", fastapiBase, {
@@ -72,7 +77,7 @@ export default function Home(): JSX.Element {
               className="underline-offset-4 hover:underline"
               href="https://openid.net/specs/openid-connect-core-1_0.html"
               target="_blank"
-              rel="noreferrer"
+              rel="noreferrer noopener"
             >
               OpenID Connect core spec
             </a>
@@ -131,15 +136,20 @@ function useOidcProvider(
   }, [state]);
 
   const fetchSession = useCallback(
-    async (targetState: string) => {
+    async (targetState: string, signal?: AbortSignal) => {
       setLoading(true);
       try {
-        const response = await fetch(`${baseUrl}/sessions/${targetState}`);
+        const response = await fetch(`${baseUrl}/sessions/${targetState}`, {
+          signal,
+        });
         if (!response.ok) {
           if (response.status === 404) {
             setError("Session not found yet. Complete the login flow first.");
             setSession(null);
             return;
+          }
+          if (response.status === 401 || response.status === 403) {
+            throw new Error("Unauthorized. Please re-run the login flow.");
           }
           throw new Error(`Failed to fetch session (${response.status})`);
         }
@@ -147,6 +157,9 @@ function useOidcProvider(
         setSession(data);
         setError(null);
       } catch (err) {
+        if ((err as DOMException | undefined)?.name === "AbortError") {
+          return;
+        }
         setError(err instanceof Error ? err.message : "Unexpected error");
       } finally {
         setLoading(false);
@@ -155,16 +168,26 @@ function useOidcProvider(
     [baseUrl],
   );
 
+  const fetchSessionRef = useRef(fetchSession);
+  useEffect(() => {
+    fetchSessionRef.current = fetchSession;
+  }, [fetchSession]);
+
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
     const storedState = window.localStorage.getItem(storageKey);
-    if (storedState) {
-      setState(storedState);
-      void fetchSession(storedState);
+    if (!storedState) {
+      return;
     }
-  }, [fetchSession, storageKey]);
+
+    setState(storedState);
+    const controller = new AbortController();
+    void fetchSessionRef.current(storedState, controller.signal);
+
+    return () => controller.abort();
+  }, [storageKey]);
 
   const startLogin = useCallback(async () => {
     setLoading(true);
