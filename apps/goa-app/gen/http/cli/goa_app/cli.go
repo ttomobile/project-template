@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 
+	oidcc "github.com/example/project-template/apps/goa-app/gen/http/oidc/client"
 	statusc "github.com/example/project-template/apps/goa-app/gen/http/status/client"
 	goahttp "goa.design/goa/v3/http"
 	goa "goa.design/goa/v3/pkg"
@@ -24,12 +25,14 @@ import (
 func UsageCommands() []string {
 	return []string{
 		"status show",
+		"oidc (start|complete|session)",
 	}
 }
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
 	return os.Args[0] + " " + "status show" + "\n" +
+		os.Args[0] + " " + "oidc start" + "\n" +
 		""
 }
 
@@ -46,9 +49,24 @@ func ParseEndpoint(
 		statusFlags = flag.NewFlagSet("status", flag.ContinueOnError)
 
 		statusShowFlags = flag.NewFlagSet("show", flag.ExitOnError)
+
+		oidcFlags = flag.NewFlagSet("oidc", flag.ContinueOnError)
+
+		oidcStartFlags = flag.NewFlagSet("start", flag.ExitOnError)
+
+		oidcCompleteFlags    = flag.NewFlagSet("complete", flag.ExitOnError)
+		oidcCompleteBodyFlag = oidcCompleteFlags.String("body", "REQUIRED", "")
+
+		oidcSessionFlags     = flag.NewFlagSet("session", flag.ExitOnError)
+		oidcSessionStateFlag = oidcSessionFlags.String("state", "REQUIRED", "State identifier")
 	)
 	statusFlags.Usage = statusUsage
 	statusShowFlags.Usage = statusShowUsage
+
+	oidcFlags.Usage = oidcUsage
+	oidcStartFlags.Usage = oidcStartUsage
+	oidcCompleteFlags.Usage = oidcCompleteUsage
+	oidcSessionFlags.Usage = oidcSessionUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -67,6 +85,8 @@ func ParseEndpoint(
 		switch svcn {
 		case "status":
 			svcf = statusFlags
+		case "oidc":
+			svcf = oidcFlags
 		default:
 			return nil, nil, fmt.Errorf("unknown service %q", svcn)
 		}
@@ -86,6 +106,19 @@ func ParseEndpoint(
 			switch epn {
 			case "show":
 				epf = statusShowFlags
+
+			}
+
+		case "oidc":
+			switch epn {
+			case "start":
+				epf = oidcStartFlags
+
+			case "complete":
+				epf = oidcCompleteFlags
+
+			case "session":
+				epf = oidcSessionFlags
 
 			}
 
@@ -114,6 +147,18 @@ func ParseEndpoint(
 			switch epn {
 			case "show":
 				endpoint = c.Show()
+			}
+		case "oidc":
+			c := oidcc.NewClient(scheme, host, doer, enc, dec, restore)
+			switch epn {
+			case "start":
+				endpoint = c.Start()
+			case "complete":
+				endpoint = c.Complete()
+				data, err = oidcc.BuildCompletePayload(*oidcCompleteBodyFlag)
+			case "session":
+				endpoint = c.Session()
+				data, err = oidcc.BuildSessionPayload(*oidcSessionStateFlag)
 			}
 		}
 	}
@@ -148,4 +193,68 @@ func statusShowUsage() {
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
 	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "status show")
+}
+
+// oidcUsage displays the usage of the oidc command and its subcommands.
+func oidcUsage() {
+	fmt.Fprintln(os.Stderr, `OIDC login orchestration endpoints for the Goa sample client.`)
+	fmt.Fprintf(os.Stderr, "Usage:\n    %s [globalflags] oidc COMMAND [flags]\n\n", os.Args[0])
+	fmt.Fprintln(os.Stderr, "COMMAND:")
+	fmt.Fprintln(os.Stderr, `    start: Create a PKCE authorization request and return the redirect URL.`)
+	fmt.Fprintln(os.Stderr, `    complete: Exchange an authorization code for tokens.`)
+	fmt.Fprintln(os.Stderr, `    session: Retrieve the session associated with the provided state.`)
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Additional help:")
+	fmt.Fprintf(os.Stderr, "    %s oidc COMMAND --help\n", os.Args[0])
+}
+func oidcStartUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] oidc start", os.Args[0])
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `Create a PKCE authorization request and return the redirect URL.`)
+
+	// Flags list
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "oidc start")
+}
+
+func oidcCompleteUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] oidc complete", os.Args[0])
+	fmt.Fprint(os.Stderr, " -body JSON")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `Exchange an authorization code for tokens.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -body JSON: `)
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "oidc complete --body '{\n      \"code\": \"Dolores ut est ab magni officiis nobis.\",\n      \"state\": \"Sed aut eveniet.\"\n   }'")
+}
+
+func oidcSessionUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] oidc session", os.Args[0])
+	fmt.Fprint(os.Stderr, " -state STRING")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `Retrieve the session associated with the provided state.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -state STRING: State identifier`)
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "oidc session --state \"Voluptatum explicabo fugiat consequuntur harum.\"")
 }
