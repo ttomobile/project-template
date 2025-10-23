@@ -11,7 +11,7 @@ class OidcProviderTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function testDiscoveryEndpointProvidesMetadata(): void
+    public function test_discovery_endpoint_provides_metadata(): void
     {
         $response = $this->get('/.well-known/openid-configuration');
 
@@ -22,7 +22,7 @@ class OidcProviderTest extends TestCase
         ]);
     }
 
-    public function testAuthorizationCodeFlowIssuesTokens(): void
+    public function test_authorization_code_flow_issues_tokens(): void
     {
         $user = User::factory()->create([
             'email' => 'demo@example.com',
@@ -43,7 +43,7 @@ class OidcProviderTest extends TestCase
             'code_challenge_method' => 'S256',
         ];
 
-        $this->get('/oidc/authorize?' . http_build_query($params))->assertOk();
+        $this->get('/oidc/authorize?'.http_build_query($params))->assertOk();
 
         $loginResponse = $this->post('/oidc/authorize', [
             'email' => $user->email,
@@ -76,7 +76,7 @@ class OidcProviderTest extends TestCase
         $this->assertArrayHasKey('id_token', $tokenData);
 
         $userinfoResponse = $this->withHeaders([
-            'Authorization' => 'Bearer ' . $tokenData['access_token'],
+            'Authorization' => 'Bearer '.$tokenData['access_token'],
         ])->get('/oidc/userinfo');
 
         $userinfoResponse->assertOk();

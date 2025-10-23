@@ -14,20 +14,22 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
-use InvalidArgumentException;
 use Illuminate\View\View;
+use InvalidArgumentException;
+use RuntimeException;
 
 class OidcController extends Controller
 {
     private const AUTH_SESSION_KEY = 'oidc.pending_request';
+
     private const CACHE_CODE_PREFIX = 'oidc.code.';
+
     private const CACHE_TOKEN_PREFIX = 'oidc.access.';
 
     public function __construct(
         private readonly CacheRepository $cache,
         private readonly UrlGenerator $urlGenerator,
-    ) {
-    }
+    ) {}
 
     public function discovery(): Response
     {
@@ -58,7 +60,7 @@ class OidcController extends Controller
 
     public function jwks(): Response
     {
-        $publicKeyPem = config('oidc.signing.public_key');
+        $publicKeyPem = $this->resolvePublicKey();
         $publicKey = openssl_pkey_get_public($publicKeyPem);
         if ($publicKey === false) {
             return response(['error' => 'invalid_key'], 500);
@@ -129,10 +131,11 @@ class OidcController extends Controller
         ]);
 
         $user = User::where('email', $credentials['email'])->first();
-        $hashedPassword = $user?->password ?? '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi';
-        $validPassword = Hash::check($credentials['password'], $hashedPassword);
+        $hashedPassword = $user !== null
+            ? $user->password
+            : '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi';
 
-        if ($user === null || ! $validPassword) {
+        if ($user === null || ! Hash::check($credentials['password'], $hashedPassword)) {
             throw ValidationException::withMessages([
                 'email' => __('auth.failed'),
             ]);
@@ -155,7 +158,7 @@ class OidcController extends Controller
             'client_secret' => ['nullable', 'string'],
         ]);
 
-        $code = $this->cache->pull(self::CACHE_CODE_PREFIX . (string) $request->input('code'));
+        $code = $this->cache->pull(self::CACHE_CODE_PREFIX.(string) $request->input('code'));
         if ($code === null) {
             return response(['error' => 'invalid_grant'], 400);
         }
@@ -197,7 +200,7 @@ class OidcController extends Controller
             return response(['error' => 'invalid_token'], 401);
         }
 
-        $token = $this->cache->get(self::CACHE_TOKEN_PREFIX . $authorization);
+        $token = $this->cache->get(self::CACHE_TOKEN_PREFIX.$authorization);
         if ($token === null) {
             return response(['error' => 'invalid_token'], 401);
         }
@@ -220,7 +223,7 @@ class OidcController extends Controller
         $code = bin2hex(random_bytes(32));
         $expiresAt = CarbonImmutable::now()->addMinutes(10);
 
-        $this->cache->put(self::CACHE_CODE_PREFIX . $code, [
+        $this->cache->put(self::CACHE_CODE_PREFIX.$code, [
             'user_id' => $user->getKey(),
             'client_id' => $pending['client_id'],
             'redirect_uri' => $pending['redirect_uri'],
@@ -242,7 +245,7 @@ class OidcController extends Controller
         $now = CarbonImmutable::now();
         $idToken = $this->buildIdToken($user, $audience, $now, $expiresIn, $scopes);
 
-        $this->cache->put(self::CACHE_TOKEN_PREFIX . $accessToken, [
+        $this->cache->put(self::CACHE_TOKEN_PREFIX.$accessToken, [
             'user_id' => $user->getKey(),
             'expires_at' => $now->addSeconds($expiresIn),
         ], $now->addSeconds($expiresIn));
@@ -272,21 +275,21 @@ class OidcController extends Controller
 
         $authority = $parts['host'];
         if (isset($parts['user'])) {
-            $authority = $parts['user'] . (isset($parts['pass']) ? ':' . $parts['pass'] : '') . '@' . $authority;
+            $authority = $parts['user'].(isset($parts['pass']) ? ':'.$parts['pass'] : '').'@'.$authority;
         }
         if (isset($parts['port'])) {
-            $authority .= ':' . $parts['port'];
+            $authority .= ':'.$parts['port'];
         }
 
         $path = $parts['path'] ?? '';
 
-        $rebuilt = $parts['scheme'] . '://' . $authority . $path;
+        $rebuilt = $parts['scheme'].'://'.$authority.$path;
         if ($query !== '') {
-            $rebuilt .= '?' . $query;
+            $rebuilt .= '?'.$query;
         }
 
         if (isset($parts['fragment'])) {
-            $rebuilt .= '#' . $parts['fragment'];
+            $rebuilt .= '#'.$parts['fragment'];
         }
 
         return $rebuilt;
@@ -311,9 +314,7 @@ class OidcController extends Controller
             $payload['name'] = $user->name ?? $user->email;
         }
 
-        $privateKey = config('oidc.signing.private_key');
-
-        return JWT::encode($payload, $privateKey, 'RS256', config('oidc.signing.kid'));
+        return JWT::encode($payload, $this->resolvePrivateKey(), 'RS256', config('oidc.signing.kid'));
     }
 
     private function verifyCodeChallenge(array $code, string $codeVerifier): bool
@@ -342,5 +343,96 @@ class OidcController extends Controller
     private function base64UrlEncode(string $value): string
     {
         return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
+    }
+
+    private function resolvePrivateKey(): string
+    {
+        return $this->resolveKey('private');
+    }
+
+    private function resolvePublicKey(): string
+    {
+        return $this->resolveKey('public');
+    }
+
+    private function resolveKey(string $type): string
+    {
+        $configured = config("oidc.signing.{$type}_key");
+        if (is_string($configured) && trim($configured) !== '') {
+            return $configured;
+        }
+
+        $path = config("oidc.signing.{$type}_key_path");
+        if (is_string($path) && $path !== '') {
+            if (! is_file($path)) {
+                $this->ensureSigningKeys();
+            }
+
+            if (is_file($path)) {
+                $contents = file_get_contents($path);
+                if ($contents !== false && trim($contents) !== '') {
+                    return $contents;
+                }
+            }
+        }
+
+        throw new RuntimeException("OIDC {$type} key is not configured.");
+    }
+
+    private function ensureSigningKeys(): void
+    {
+        $privatePath = config('oidc.signing.private_key_path');
+        $publicPath = config('oidc.signing.public_key_path');
+
+        if (! is_string($privatePath) || $privatePath === '' || ! is_string($publicPath) || $publicPath === '') {
+            return;
+        }
+
+        if (is_file($privatePath) && is_file($publicPath)) {
+            return;
+        }
+
+        if (! extension_loaded('openssl')) {
+            throw new RuntimeException('OpenSSL extension is required to generate OIDC signing keys.');
+        }
+
+        $resource = openssl_pkey_new([
+            'private_key_bits' => 2048,
+            'private_key_type' => OPENSSL_KEYTYPE_RSA,
+        ]);
+
+        if ($resource === false) {
+            throw new RuntimeException('Unable to generate OIDC signing keys.');
+        }
+
+        if (! openssl_pkey_export($resource, $privateKey)) {
+            throw new RuntimeException('Unable to export the OIDC private key.');
+        }
+
+        $details = openssl_pkey_get_details($resource);
+        if ($details === false || ! isset($details['key'])) {
+            throw new RuntimeException('Unable to export the OIDC public key.');
+        }
+
+        $this->writeKeyFile($privatePath, $privateKey);
+        $this->writeKeyFile($publicPath, $details['key']);
+
+        config([
+            'oidc.signing.private_key' => $privateKey,
+            'oidc.signing.public_key' => $details['key'],
+        ]);
+    }
+
+    private function writeKeyFile(string $path, string $contents): void
+    {
+        $directory = dirname($path);
+
+        if (! is_dir($directory) && ! mkdir($directory, 0700, true) && ! is_dir($directory)) {
+            throw new RuntimeException(sprintf('Unable to create directory for OIDC key storage: %s', $directory));
+        }
+
+        if (file_put_contents($path, $contents) === false) {
+            throw new RuntimeException(sprintf('Unable to write OIDC key to path: %s', $path));
+        }
     }
 }
